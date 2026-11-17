@@ -1,0 +1,43 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python virtualenvs & caches
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Local runtime data & uploads
+uploads/
+pgdata/
+redisdata/
+logs/
+*.log
+
+# TLS certificates & private keys
+nginx/certs/*.pem
+nginx/certs/*.key
+nginx/certs/*.crt
+
+# OS / Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
