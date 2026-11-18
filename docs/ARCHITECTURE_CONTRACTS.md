@@ -17,7 +17,7 @@ app/
 ├── database/
 │   ├── base.py                  # SQLAlchemy 2.0 DeclarativeBase + naming convention + TimestampMixin
 │   ├── session.py               # AsyncEngine + async_session_factory + dependency helper
-│   ├── models.py                # 16 PostgreSQL tables with constraints & relationships
+│   ├── models.py                # 17 PostgreSQL tables with constraints & relationships
 │   └── seed.py                  # Idempotent seed (12-lang translations, 5 main buttons, settings, sample catalog)
 ├── locales/
 │   ├── seed_translations.py     # Complete 12-language translation dictionary (no placeholders)
