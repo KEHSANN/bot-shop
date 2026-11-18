@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Support Tickets — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-white">🆘 Customer Support Tickets</h1>
+    <p class="text-xs text-slate-400 mt-1">Two-way ticket viewer and live customer reply console</p>
+  </div>
+</div>
+
+<div class="flex flex-wrap gap-2 mb-6 text-xs">
+  {% for st in ['all', 'open', 'answered', 'closed'] %}
+  <a href="/admin/support?status={{ st }}" class="px-3.5 py-1.5 rounded-xl font-semibold capitalize {% if status_filter == st %}bg-blue-600 text-white{% else %}bg-slate-900 border border-slate-800 text-slate-300{% endif %}">
+    {{ st }}
+  </a>
+  {% endfor %}
+</div>
+
+<div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 overflow-x-auto">
+  <table class="w-full text-left text-xs">
+    <thead class="text-slate-400 border-b border-slate-800">
+      <tr>
+        <th class="pb-3">Ticket #</th>
+        <th class="pb-3">User ID</th>
+        <th class="pb-3">Category</th>
+        <th class="pb-3">Subject</th>
+        <th class="pb-3">Status</th>
+        <th class="pb-3">Updated</th>
+        <th class="pb-3 text-right">Action</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-800/70">
+      {% for t in tickets %}
+      <tr>
+        <td class="py-3 font-mono font-bold text-blue-300">{{ t.ticket_number }}</td>
+        <td class="py-3"><a href="/admin/users/{{ t.user_id }}" class="text-blue-400 hover:underline">User #{{ t.user_id }}</a></td>
+        <td class="py-3 uppercase font-mono">{{ t.category.value }}</td>
+        <td class="py-3 text-slate-200">{{ t.subject or '-' }}</td>
+        <td class="py-3">
+          <span class="px-2.5 py-0.5 rounded-full font-semibold uppercase
+            {% if t.status.value == 'open' %}bg-amber-900/60 text-amber-200
+            {% elif t.status.value == 'answered' %}bg-blue-900/60 text-blue-200
+            {% else %}bg-slate-800 text-slate-400{% endif %}">
+            {{ t.status.value }}
+          </span>
+        </td>
+        <td class="py-3 text-slate-400">{{ t.updated_at }}</td>
+        <td class="py-3 text-right">
+          <a href="/admin/support/{{ t.id }}" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold">
+            Open Thread
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="py-6 text-center text-slate-400">No support tickets found.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

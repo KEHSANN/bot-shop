@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Mass Broadcast — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-2xl font-bold text-white">📢 Mass Broadcast & Announcements</h1>
+  <p class="text-xs text-slate-400 mt-1">Launch rate-limited announcements (~25 msg/s with FloodWait handling) to all members or targeted segments</p>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Broadcast Launcher -->
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+    <h2 class="text-base font-bold text-white mb-4">🚀 Launch Broadcast Job</h2>
+    <form method="post" action="/admin/broadcast" class="space-y-4 text-xs">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div>
+        <label class="block text-slate-400 mb-1">Target Audience Segment</label>
+        <select name="target_filter" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+          <option value="all">🌐 All Active Members</option>
+          <option value="has_balance">💰 Members with Balance &gt; 0</option>
+          {% for code in LANGUAGE_ORDER %}
+          {% set info = SUPPORTED_LANGUAGES[code] %}
+          <option value="lang:{{ code }}">{{ info.flag }} {{ info.english_name }} ({{ code }}) Only</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="block text-slate-400 mb-1">Announcement Message</label>
+        <textarea name="message_text" rows="5" required placeholder="Write your announcement message..." class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"></textarea>
+      </div>
+
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="block text-slate-400 mb-1">Inline Button Label (Optional)</label>
+          <input type="text" name="button_text" placeholder="🛒 Open Shop" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Button URL (Optional)</label>
+          <input type="url" name="button_url" placeholder="https://t.me/..." class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-slate-400 mb-1">Optional Telegram Media File ID</label>
+        <input type="text" name="media_file_id" placeholder="Optional photo/video file_id" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+      </div>
+
+      <button type="submit" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">
+        Launch Broadcast Job
+      </button>
+    </form>
+  </div>
+
+  <!-- Job Progress History -->
+  <div class="lg:col-span-2 rounded-2xl bg-slate-900 border border-slate-800 p-6 overflow-x-auto">
+    <h2 class="text-base font-bold text-white mb-4">📊 Broadcast Job History</h2>
+    <table class="w-full text-left text-xs">
+      <thead class="text-slate-400 border-b border-slate-800">
+        <tr>
+          <th class="pb-3">Job ID</th>
+          <th class="pb-3">Audience Filter</th>
+          <th class="pb-3">Progress (Sent / Failed / Total)</th>
+          <th class="pb-3">Status</th>
+          <th class="pb-3">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800/70">
+        {% for job in jobs %}
+        <tr>
+          <td class="py-3 font-mono font-bold text-blue-300">#{{ job.id }}</td>
+          <td class="py-3 font-mono text-slate-200">{{ job.target_filter }}</td>
+          <td class="py-3 font-mono">
+            <span class="text-emerald-400">{{ job.sent_count }}</span> /
+            <span class="text-red-400">{{ job.failed_count }}</span> /
+            <span class="text-white">{{ job.total_targets }}</span>
+          </td>
+          <td class="py-3">
+            <span class="px-2.5 py-0.5 rounded-full font-semibold uppercase
+              {% if job.status.value == 'completed' %}bg-emerald-900/60 text-emerald-200
+              {% elif job.status.value in ['running', 'pending'] %}bg-blue-900/60 text-blue-200
+              {% else %}bg-red-900/60 text-red-200{% endif %}">
+              {{ job.status.value }}
+            </span>
+          </td>
+          <td class="py-3 text-slate-400">{{ job.created_at }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="py-6 text-center text-slate-400">No broadcast jobs launched yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

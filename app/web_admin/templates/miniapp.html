@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="{{ initial_lang }}" dir="{{ 'rtl' if is_rtl else 'ltr' }}" data-initial-lang="{{ initial_lang }}" class="h-full bg-slate-950 text-slate-100">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>{{ app_name }} — Mini App Shop</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="min-h-full bg-slate-950 text-slate-100 pb-10">
+  <header class="sticky top-0 z-20 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-4 py-3">
+    <div class="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-base font-extrabold text-white">🛍 {{ app_name }}</h1>
+        <div class="flex items-center gap-3 text-xs mt-0.5">
+          <span>USD: <strong id="miniapp-balance-usd" class="text-emerald-400 font-mono">$0.00</strong></span>
+          <span id="miniapp-balance-irt-wrap" class="hidden">IRT: <strong id="miniapp-balance-irt" class="text-amber-300 font-mono">0 IRT</strong></span>
+        </div>
+      </div>
+      <div>
+        <select id="miniapp-lang-select" aria-label="Language" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white">
+          {% for lang in languages %}
+          <option value="{{ lang.code }}" {% if lang.code == initial_lang %}selected{% endif %}>{{ lang.flag }} {{ lang.native_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-4xl mx-auto px-4 pt-5 space-y-6">
+    <div id="miniapp-status" class="hidden"></div>
+
+    <!-- Category Color Pills -->
+    <section>
+      <div id="miniapp-categories" class="flex flex-wrap gap-2"></div>
+    </section>
+
+    <!-- Products Grid (styled with DB Hex colors) -->
+    <section>
+      <h2 class="text-sm font-bold text-slate-300 mb-3">🛒 Digital Goods Catalog</h2>
+      <div id="miniapp-products" class="grid grid-cols-1 sm:grid-cols-2 gap-4"></div>
+    </section>
+
+    <!-- Region-Aware Deposit Methods -->
+    <section class="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-4">
+      <h2 class="text-sm font-bold text-white">💳 Deposit Methods</h2>
+      <div id="miniapp-fiat-section" class="hidden space-y-2">
+        <h3 class="text-xs font-bold text-emerald-300">🇮🇷 Iranian Rial / Toman (Card-to-Card & Gateway)</h3>
+        <div id="miniapp-fiat-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      </div>
+      <div class="space-y-2">
+        <h3 class="text-xs font-bold text-blue-300">🪙 Cryptocurrency Wallets</h3>
+        <div id="miniapp-crypto-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+      </div>
+    </section>
+
+    <!-- User Order History -->
+    <section class="rounded-2xl bg-slate-900 border border-slate-800 p-5 space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-sm font-bold text-white">📜 Order History</h2>
+        <button id="miniapp-refresh-orders" type="button" class="text-xs text-blue-400 hover:underline">↻ Refresh</button>
+      </div>
+      <div id="miniapp-orders-list" class="space-y-2 text-xs text-slate-300"></div>
+    </section>
+  </main>
+
+  <!-- Atomic Purchase Modal -->
+  <div id="miniapp-purchase-modal" class="hidden fixed inset-0 z-30 bg-black/75 flex items-center justify-center p-4">
+    <div class="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 p-6 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 id="modal-prod-title" class="text-base font-bold text-white"></h3>
+        <button id="modal-close-btn" type="button" class="text-slate-400 hover:text-white text-sm">✕</button>
+      </div>
+      <p id="modal-prod-rules" class="text-xs text-slate-300 whitespace-pre-wrap"></p>
+      <div id="modal-bulk-tiers" class="hidden rounded-xl bg-slate-950 border border-slate-800 p-3 text-xs space-y-1"></div>
+      <form id="miniapp-purchase-form" class="space-y-3 text-xs">
+        <div>
+          <label class="block text-slate-400 mb-1">Quantity</label>
+          <input id="modal-qty" type="number" min="1" max="1000" value="1" required class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Payment Currency</label>
+          <select id="modal-currency" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"></select>
+        </div>
+        <div id="modal-total-preview" class="font-mono font-bold text-emerald-400"></div>
+        <div id="modal-manual-wrap" class="hidden">
+          <label id="modal-manual-label" class="block text-slate-400 mb-1">Activation Input (Email / Link / ID)</label>
+          <input id="modal-manual-input" type="text" placeholder="Enter required account info" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        </div>
+        <button id="modal-submit-btn" type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
+          Confirm Atomic Purchase
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/miniapp.js"></script>
+</body>
+</html>

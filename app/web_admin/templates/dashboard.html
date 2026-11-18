@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Dashboard & KPIs — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-white">📊 Executive Dashboard & KPIs</h1>
+    <p class="text-xs text-slate-400 mt-1">Real-time store metrics, multi-currency revenue, and inventory health</p>
+  </div>
+  <div class="flex gap-2">
+    <a href="/admin/payments?status=pending" class="px-3.5 py-2 rounded-xl bg-amber-600/20 border border-amber-500/40 text-amber-300 text-xs font-semibold">
+      ⏳ Pending Deposits ({{ stats.pending_deposits_count }})
+    </a>
+    <a href="/admin/orders?status=pending_fulfillment" class="px-3.5 py-2 rounded-xl bg-purple-600/20 border border-purple-500/40 text-purple-300 text-xs font-semibold">
+      📦 Pending Manual Orders ({{ stats.pending_manual_orders_count }})
+    </a>
+    <a href="/admin/support?status=open" class="px-3.5 py-2 rounded-xl bg-blue-600/20 border border-blue-500/40 text-blue-300 text-xs font-semibold">
+      🆘 Open Tickets ({{ stats.open_tickets_count }})
+    </a>
+  </div>
+</div>
+
+<!-- Primary KPI Grid -->
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase">Total Members</div>
+    <div class="text-2xl font-extrabold text-white mt-2">{{ stats.total_users }}</div>
+    <div class="text-xs text-slate-400 mt-2">
+      24h: <strong class="text-emerald-400">{{ stats.active_users_24h }}</strong> ·
+      7d: <strong class="text-blue-400">{{ stats.active_users_7d }}</strong> ·
+      30d: <strong class="text-purple-400">{{ stats.active_users_30d }}</strong>
+    </div>
+  </div>
+
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase">Total USD Revenue</div>
+    <div class="text-2xl font-extrabold text-emerald-400 font-mono mt-2">${{ stats.total_revenue_usd | fmt_usd }}</div>
+    <div class="text-xs text-slate-400 mt-2">Global Crypto & Wallet Sales</div>
+  </div>
+
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase">Total Toman Revenue (fa)</div>
+    <div class="text-2xl font-extrabold text-amber-300 font-mono mt-2">{{ stats.total_revenue_irt | fmt_irt }} IRT</div>
+    <div class="text-xs text-slate-400 mt-2">Iranian Rial/Toman Region Sales</div>
+  </div>
+
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-5">
+    <div class="text-xs font-semibold text-slate-400 uppercase">Action Queues</div>
+    <div class="mt-2 space-y-1 text-xs">
+      <div class="flex justify-between"><span>Pending Deposits:</span> <strong class="text-amber-300">{{ stats.pending_deposits_count }}</strong></div>
+      <div class="flex justify-between"><span>Manual Orders:</span> <strong class="text-purple-300">{{ stats.pending_manual_orders_count }}</strong></div>
+      <div class="flex justify-between"><span>Open Tickets:</span> <strong class="text-blue-300">{{ stats.open_tickets_count }}</strong></div>
+    </div>
+  </div>
+</div>
+
+<!-- Low-Stock Alerts Section -->
+<div class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-base font-bold text-white">⚠️ Low-Stock Inventory Alerts</h2>
+    <a href="/admin/catalog" class="text-xs text-blue-400 hover:underline">Manage Catalog →</a>
+  </div>
+
+  {% if stats.low_stock_alerts %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-xs">
+      <thead class="text-slate-400 border-b border-slate-800">
+        <tr>
+          <th class="pb-3">Product</th>
+          <th class="pb-3">Slug</th>
+          <th class="pb-3">Delivery Type</th>
+          <th class="pb-3">Available Stock</th>
+          <th class="pb-3">Alert Threshold</th>
+          <th class="pb-3 text-right">Action</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-800/70">
+        {% for alert in stats.low_stock_alerts %}
+        <tr>
+          <td class="py-3 font-semibold text-white">{{ alert.title }}</td>
+          <td class="py-3 font-mono text-slate-400">{{ alert.slug }}</td>
+          <td class="py-3 uppercase text-slate-300">{{ alert.delivery_type.value }}</td>
+          <td class="py-3 font-mono font-bold text-red-400">{{ alert.available_stock }}</td>
+          <td class="py-3 font-mono text-slate-400">{{ alert.threshold }}</td>
+          <td class="py-3 text-right">
+            <a href="/admin/catalog/products/{{ alert.product_id }}" class="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold">
+              Restock
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-xs text-slate-400 py-4">✅ All active products have healthy stock levels.</p>
+  {% endif %}
+</div>
+{% endblock %}

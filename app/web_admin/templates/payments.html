@@ -1,0 +1,257 @@
+{% extends "base.html" %}
+{% block title %}Payments & Wallets — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+  <div>
+    <h1 class="text-2xl font-bold text-white">💳 Payments Queue, Crypto Wallets & Fiat Methods</h1>
+    <p class="text-xs text-slate-400 mt-1">Dynamic multi-network crypto wallets, Iranian Rial/Toman (fa-only) methods, and ACID deposit approvals</p>
+  </div>
+
+  <!-- Exchange Rate Quick Form -->
+  <form method="post" action="/admin/payments/rate" class="flex flex-wrap items-center gap-2 rounded-2xl bg-slate-900 border border-slate-800 px-4 py-2.5 text-xs">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <span class="text-slate-400 font-semibold">1 USD =</span>
+    <input type="text" name="usd_to_toman_rate" value="{{ exchange_rate.usd_to_toman_rate }}" required class="w-28 rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1.5 text-amber-300 font-mono font-bold">
+    <span class="text-slate-400">IRT</span>
+    <select name="rate_mode" class="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1.5 text-white">
+      <option value="manual" {% if exchange_rate.rate_mode == 'manual' %}selected{% endif %}>Manual</option>
+      <option value="live" {% if exchange_rate.rate_mode == 'live' %}selected{% endif %}>Live</option>
+    </select>
+    <button type="submit" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold">
+      Update Rate
+    </button>
+  </form>
+</div>
+
+<!-- Payments Queue Filter Tabs -->
+<div class="flex flex-wrap gap-2 mb-4 text-xs">
+  {% for tab_status in ['all', 'pending', 'approved', 'rejected', 'expired'] %}
+  <a
+    href="/admin/payments?status={{ tab_status }}"
+    class="px-3.5 py-1.5 rounded-xl font-semibold capitalize {% if status_filter == tab_status %}bg-blue-600 text-white{% else %}bg-slate-900 border border-slate-800 text-slate-300{% endif %}"
+  >
+    {{ tab_status }}
+  </a>
+  {% endfor %}
+</div>
+
+<!-- Payments Queue Table -->
+<div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 mb-8 overflow-x-auto">
+  <h2 class="text-sm font-bold text-white mb-4">📥 Deposits & Payments Queue</h2>
+  <table class="w-full text-left text-xs">
+    <thead class="text-slate-400 border-b border-slate-800">
+      <tr>
+        <th class="pb-3">ID</th>
+        <th class="pb-3">User ID</th>
+        <th class="pb-3">Category</th>
+        <th class="pb-3">Amount</th>
+        <th class="pb-3">TXID / Authority / Note</th>
+        <th class="pb-3">Receipt</th>
+        <th class="pb-3">Status</th>
+        <th class="pb-3 text-right">Actions</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-slate-800/70">
+      {% for p in payments %}
+      <tr>
+        <td class="py-3 font-mono">#{{ p.id }}</td>
+        <td class="py-3"><a href="/admin/users/{{ p.user_id }}" class="text-blue-400 hover:underline font-mono">User #{{ p.user_id }}</a></td>
+        <td class="py-3 uppercase font-mono text-slate-300">{{ p.payment_category.value }}</td>
+        <td class="py-3 font-mono font-bold">
+          {% if p.currency.value == 'USD' %}
+          <span class="text-emerald-400">${{ p.amount_usd | fmt_usd }}</span>
+          {% else %}
+          <span class="text-amber-300">{{ p.amount_irt | fmt_irt }} IRT</span>
+          {% endif %}
+        </td>
+        <td class="py-3 font-mono text-slate-300 max-w-xs break-all">
+          {{ p.tx_hash or p.authority_track_id or p.receipt_note or '-' }}
+        </td>
+        <td class="py-3">
+          {% if p.receipt_local_path %}
+          <a href="/admin/payments/{{ p.id }}/receipt" target="_blank" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-blue-300 font-semibold">
+            🖼 View Image
+          </a>
+          {% elif p.receipt_file_id %}
+          <span class="text-slate-400 font-mono">TG File</span>
+          {% else %}
+          <span class="text-slate-600">-</span>
+          {% endif %}
+        </td>
+        <td class="py-3">
+          <span class="px-2.5 py-0.5 rounded-full font-semibold uppercase
+            {% if p.status.value == 'pending' %}bg-amber-900/60 text-amber-200 border border-amber-500/40
+            {% elif p.status.value == 'approved' %}bg-emerald-900/60 text-emerald-200 border border-emerald-500/40
+            {% else %}bg-red-900/60 text-red-200 border border-red-500/40{% endif %}">
+            {{ p.status.value }}
+          </span>
+        </td>
+        <td class="py-3 text-right">
+          {% if p.status.value == 'pending' %}
+          <div class="inline-flex gap-1.5">
+            <form method="post" action="/admin/payments/{{ p.id }}/approve" class="inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
+                ✅ Approve
+              </button>
+            </form>
+            <form method="post" action="/admin/payments/{{ p.id }}/reject" class="inline-flex items-center gap-1">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="text" name="admin_note" placeholder="Reason" class="w-24 rounded-lg bg-slate-950 border border-slate-700 px-2 py-1 text-white">
+              <button type="submit" class="px-2.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold">
+                ❌ Reject
+              </button>
+            </form>
+          </div>
+          {% else %}
+          <span class="text-slate-500">Reviewed</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="8" class="py-6 text-center text-slate-400">No payments matching filter.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Wallets & Fiat Methods CRUD -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <!-- Crypto Wallets -->
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5">
+    <h2 class="text-base font-bold text-white">🪙 Unlimited Cryptocurrency Wallets (Global)</h2>
+    <div class="space-y-3">
+      {% for w in crypto_wallets %}
+      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex items-start justify-between gap-4 text-xs">
+        <div class="space-y-1 min-w-0 flex-1">
+          <div class="font-bold text-blue-300">{{ w.coin_name }} ({{ w.symbol }} · {{ w.network }}) {% if not w.is_active %}<span class="text-red-400">[Inactive]</span>{% endif %}</div>
+          <div class="font-mono text-slate-200 break-all">{{ w.wallet_address }}</div>
+          <div class="text-slate-400">Min: ${{ w.min_deposit_usd }} · Mode: {{ w.verification_mode.value }} · Fee: {{ w.fee_note or '-' }}</div>
+          <details class="pt-2">
+            <summary class="cursor-pointer text-blue-400 hover:underline">Edit Wallet</summary>
+            <form method="post" action="/admin/payments/wallets/{{ w.id }}" enctype="multipart/form-data" class="mt-2 space-y-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="text" name="wallet_address" value="{{ w.wallet_address }}" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-white font-mono">
+              <div class="grid grid-cols-2 gap-2">
+                <input type="text" name="min_deposit_usd" value="{{ w.min_deposit_usd }}" class="rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-white font-mono">
+                <label class="inline-flex items-center gap-1.5 text-slate-300">
+                  <input type="hidden" name="is_active" value="false">
+                  <input type="checkbox" name="is_active" value="true" {% if w.is_active %}checked{% endif %}> Active
+                </label>
+              </div>
+              <input type="file" name="qr_file" accept="image/jpeg,image/png,image/webp" class="w-full text-slate-400">
+              <button type="submit" class="px-3 py-1 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold">Save</button>
+            </form>
+          </details>
+        </div>
+        <div class="flex flex-col items-end gap-2 shrink-0">
+          <img src="/admin/payments/wallets/{{ w.id }}/qr.png" alt="QR {{ w.symbol }}" class="w-16 h-16 rounded-lg bg-white p-1">
+          <form method="post" action="/admin/payments/wallets/{{ w.id }}/delete">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="text-red-400 hover:underline">Delete</button>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-xs text-slate-500">No crypto wallets configured yet.</p>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="/admin/payments/wallets" enctype="multipart/form-data" class="pt-4 border-t border-slate-800 space-y-3 text-xs">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="font-semibold text-slate-200">➕ Add New Crypto Wallet</div>
+      <div class="grid grid-cols-3 gap-2">
+        <input type="text" name="coin_name" required placeholder="Tether USD" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        <input type="text" name="symbol" required placeholder="USDT" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white uppercase">
+        <input type="text" name="network" required placeholder="TRC20" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white uppercase">
+      </div>
+      <input type="text" name="wallet_address" required placeholder="Wallet Address (e.g. T... or 0x...)" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+      <div class="grid grid-cols-2 gap-2">
+        <input type="text" name="min_deposit_usd" value="1" placeholder="Min USD" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        <select name="verification_mode" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+          {% for vm in verification_modes %}
+          <option value="{{ vm }}">{{ vm }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <input type="text" name="fee_note" placeholder="Network fee note (optional)" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+      <textarea name="instructions" rows="2" placeholder="Deposit instructions for user" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"></textarea>
+      <div>
+        <label class="block text-slate-400 mb-1">Optional Custom QR Image (auto-generated if omitted)</label>
+        <input type="file" name="qr_file" accept="image/jpeg,image/png,image/webp" class="w-full text-slate-400">
+      </div>
+      <button type="submit" class="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">
+        Add Crypto Wallet
+      </button>
+    </form>
+  </div>
+
+  <!-- Iranian Fiat Methods (fa only) -->
+  <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6 space-y-5">
+    <h2 class="text-base font-bold text-white">🇮🇷 Iranian Rial/Toman Methods (fa only)</h2>
+    <div class="space-y-3">
+      {% for fm in fiat_methods %}
+      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 flex items-start justify-between gap-4 text-xs">
+        <div class="space-y-1 flex-1 min-w-0">
+          <div class="font-bold text-emerald-300">{{ fm.title }} ({{ fm.method_type.value }}) {% if not fm.is_active %}<span class="text-red-400">[Inactive]</span>{% endif %}</div>
+          {% if fm.card_number %}<div class="font-mono text-slate-200">Card: {{ fm.card_number }}</div>{% endif %}
+          {% if fm.sheba %}<div class="font-mono text-slate-400">Sheba: {{ fm.sheba }}</div>{% endif %}
+          <div class="text-slate-400">Holder: {{ fm.cardholder_name or '-' }} · Bank: {{ fm.bank_name or fm.gateway_provider or '-' }} · Min: {{ fm.min_deposit_irt | fmt_irt }} IRT</div>
+          <details class="pt-2">
+            <summary class="cursor-pointer text-blue-400 hover:underline">Edit Fiat Method</summary>
+            <form method="post" action="/admin/payments/fiat/{{ fm.id }}" class="mt-2 space-y-2">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="text" name="title" value="{{ fm.title }}" class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-white">
+              <div class="grid grid-cols-2 gap-2">
+                <input type="text" name="min_deposit_irt" value="{{ fm.min_deposit_irt }}" class="rounded-lg bg-slate-900 border border-slate-700 px-2 py-1 text-white font-mono">
+                <label class="inline-flex items-center gap-1.5 text-slate-300">
+                  <input type="hidden" name="is_active" value="false">
+                  <input type="checkbox" name="is_active" value="true" {% if fm.is_active %}checked{% endif %}> Active
+                </label>
+              </div>
+              <button type="submit" class="px-3 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold">Save</button>
+            </form>
+          </details>
+        </div>
+        <form method="post" action="/admin/payments/fiat/{{ fm.id }}/delete">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="text-red-400 hover:underline">Delete</button>
+        </form>
+      </div>
+      {% else %}
+      <p class="text-xs text-slate-500">No Iranian Fiat methods configured yet.</p>
+      {% endfor %}
+    </div>
+
+    <form method="post" action="/admin/payments/fiat" class="pt-4 border-t border-slate-800 space-y-3 text-xs">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="font-semibold text-slate-200">➕ Add Iranian Fiat Method</div>
+      <div class="grid grid-cols-2 gap-2">
+        <select name="method_type" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+          <option value="card_to_card">Card-to-Card (کارت به کارت)</option>
+          <option value="gateway">Iranian Payment Gateway</option>
+        </select>
+        <input type="text" name="title" required placeholder="کارت بانک ملت / درگاه زرین‌پال" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <input type="text" name="card_number" placeholder="16-digit Card Number" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        <input type="text" name="sheba" placeholder="IR... (26 chars)" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <input type="text" name="cardholder_name" placeholder="Cardholder Full Name" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        <input type="text" name="bank_name" placeholder="Bank Name" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+      </div>
+      <div class="grid grid-cols-3 gap-2">
+        <input type="text" name="gateway_provider" placeholder="zarinpal / zibal" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        <input type="password" name="gateway_merchant_id" placeholder="Merchant ID (encrypted)" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+        <input type="text" name="min_deposit_irt" value="50000" placeholder="Min IRT" class="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+      </div>
+      <textarea name="instructions" rows="2" placeholder="Persian transfer instructions" dir="rtl" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white"></textarea>
+      <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
+        Add Fiat Method
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

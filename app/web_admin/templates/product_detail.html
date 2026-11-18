@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}{{ product.titles_json.get('en') or product.slug }} — {{ app_name }}{% endblock %}
+
+{% block content %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-4">
+  <div>
+    <a href="/admin/catalog" class="text-xs text-blue-400 hover:underline">← Back to Catalog</a>
+    <h1 class="text-2xl font-bold text-white mt-1">
+      {{ product.color_emoji }} {{ product.titles_json.get('en') or product.slug }}
+    </h1>
+    <p class="text-xs text-slate-400 font-mono">{{ product.slug }} · Available: {{ product.available_stock }} · Sold: {{ product.sold_count }}</p>
+  </div>
+  <form method="post" action="/admin/catalog/products/{{ product.id }}/delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="px-4 py-2 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-300 text-xs font-bold">
+      🗑 Delete Product
+    </button>
+  </form>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <!-- Product Core + Dual-Layer Color + 12-Language Editor -->
+  <div class="lg:col-span-2 rounded-2xl bg-slate-900 border border-slate-800 p-6">
+    <h2 class="text-base font-bold text-white mb-4">⚙️ Product Settings, 12-Language Copy & Colors</h2>
+    <form method="post" action="/admin/catalog/products/{{ product.id }}" class="space-y-5 text-xs">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div>
+          <label class="block text-slate-400 mb-1">Category</label>
+          <select name="category_id" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+            {% for cat in categories %}
+            <option value="{{ cat.id }}" {% if cat.id == product.category_id %}selected{% endif %}>
+              {{ cat.color_emoji }} {{ cat.names_json.get('en') or cat.slug }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Slug</label>
+          <input type="text" name="slug" value="{{ product.slug }}" required class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Delivery Type</label>
+          <select name="delivery_type" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white">
+            <option value="auto" {% if product.delivery_type.value == 'auto' %}selected{% endif %}>Auto (Encrypted Stock)</option>
+            <option value="manual" {% if product.delivery_type.value == 'manual' %}selected{% endif %}>Manual Fulfillment</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div>
+          <label class="block text-slate-400 mb-1">Price USD ($)</label>
+          <input type="text" name="price_usd" value="{{ product.price_usd }}" required class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Price IRT (fa)</label>
+          <input type="text" name="price_irt" value="{{ product.price_irt or '' }}" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Manual Stock (-1 = ∞)</label>
+          <input type="number" name="manual_stock_count" value="{{ product.manual_stock_count }}" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Low-Stock Alert</label>
+          <input type="number" name="low_stock_threshold" value="{{ product.low_stock_threshold }}" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        </div>
+      </div>
+
+      <div>
+        <label class="block text-slate-400 mb-1">Manual Fulfillment Prompt Key (Optional)</label>
+        <input type="text" name="manual_prompt_key" value="{{ product.manual_prompt_key or '' }}" placeholder="e.g. enter_account_email" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+      </div>
+
+      <div class="flex flex-wrap gap-6">
+        <label class="inline-flex items-center gap-2 text-slate-300">
+          <input type="hidden" name="is_pinned" value="false">
+          <input type="checkbox" name="is_pinned" value="true" {% if product.is_pinned %}checked{% endif %}> Pin Featured to Main Menu
+        </label>
+        <label class="inline-flex items-center gap-2 text-slate-300">
+          <input type="hidden" name="is_active" value="false">
+          <input type="checkbox" name="is_active" value="true" {% if product.is_active %}checked{% endif %}> Active in Shop
+        </label>
+      </div>
+
+      <!-- Dual-Layer Color Picker Widget -->
+      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3" data-color-picker-widget data-preview-title-source="#edit-prod-title-en" data-default-label="{{ product.titles_json.get('en') or product.slug }}">
+        <div class="font-semibold text-slate-200">🎨 Dual-Layer Color Picker (Telegram Emoji + Web CSS Hex)</div>
+        <div class="flex flex-wrap items-center gap-3">
+          <input type="color" data-color-wheel value="{{ product.color_hex }}" class="w-10 h-10 rounded cursor-pointer bg-transparent border-0">
+          <input type="text" name="color_hex" value="{{ product.color_hex }}" pattern="^#[0-9a-fA-F]{6}$" data-color-hex class="w-28 rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 font-mono text-white">
+          <span data-color-rgb class="text-slate-400 font-mono">{{ product.color_hex | hex_to_rgb }}</span>
+          <input type="text" name="color_emoji" value="{{ product.color_emoji }}" maxlength="16" data-color-emoji class="w-16 rounded-lg bg-slate-900 border border-slate-700 px-2 py-1.5 text-center">
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          {% for pkey, preset in COLOR_PALETTE.items() %}
+          <button type="button" class="color-swatch-btn w-7 h-7 rounded-lg border border-slate-700" style="background-color: {{ preset.hex_code }};" data-preset-hex="{{ preset.hex_code }}" data-preset-swatch-emoji="{{ preset.emoji }}" title="{{ preset.label }}"></button>
+          {% endfor %}
+          {% for em in COLOR_EMOJI_CHOICES %}
+          <button type="button" class="emoji-badge-btn px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-sm" data-preset-emoji="{{ em }}">{{ em }}</button>
+          {% endfor %}
+        </div>
+        <div class="flex flex-wrap gap-2 pt-2">
+          <span class="tg-inline-preview" data-tg-preview>{{ product.color_emoji }} {{ product.titles_json.get('en') or product.slug }} - Stock: {{ product.available_stock }}</span>
+          <span class="web-hex-preview" data-web-preview style="background-color: {{ product.color_hex }}; color: {{ product.color_hex | contrast_text }};">{{ product.color_emoji }} {{ product.titles_json.get('en') or product.slug }}</span>
+        </div>
+      </div>
+
+      <!-- 12-Language Copy Fields -->
+      <div class="space-y-3">
+        <div class="font-semibold text-slate-200">🌐 12-Language Titles, Descriptions & Rules</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {% for code in LANGUAGE_ORDER %}
+          {% set info = SUPPORTED_LANGUAGES[code] %}
+          <div class="rounded-xl bg-slate-950 border border-slate-800 p-3 space-y-2">
+            <div class="font-semibold text-slate-300">{{ info.flag }} {{ info.english_name }} ({{ code }})</div>
+            <input
+              {% if code == 'en' %}id="edit-prod-title-en"{% endif %}
+              type="text"
+              name="title_{{ code }}"
+              value="{{ product.titles_json.get(code, '') }}"
+              {% if info.is_rtl %}dir="rtl"{% endif %}
+              placeholder="Title ({{ code }})"
+              class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-white"
+            >
+            <textarea
+              name="description_{{ code }}"
+              rows="2"
+              {% if info.is_rtl %}dir="rtl"{% endif %}
+              placeholder="Description ({{ code }})"
+              class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-white"
+            >{{ product.descriptions_json.get(code, '') }}</textarea>
+            <textarea
+              name="rules_{{ code }}"
+              rows="2"
+              {% if info.is_rtl %}dir="rtl"{% endif %}
+              placeholder="Pre-purchase checklist / rules ({{ code }})"
+              class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-white"
+            >{{ product.rules_json.get(code, '') }}</textarea>
+            <input
+              type="text"
+              name="manual_prompt_{{ code }}"
+              value="{{ product.manual_prompts_json.get(code, '') }}"
+              {% if info.is_rtl %}dir="rtl"{% endif %}
+              placeholder="Manual input prompt ({{ code }})"
+              class="w-full rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1.5 text-white"
+            >
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <button type="submit" class="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold">
+        Save Product Changes
+      </button>
+    </form>
+  </div>
+
+  <!-- Right Column: Bulk Tiers & Stock Import -->
+  <div class="space-y-6">
+    <!-- Bulk Discount Tiers -->
+    <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+      <h2 class="text-base font-bold text-white mb-3">📉 Bulk Discount Tiers</h2>
+      <p class="text-xs text-slate-400 mb-3">One tier per line: <code>min_qty:usd_price[:irt_price]</code></p>
+      <form method="post" action="/admin/catalog/products/{{ product.id }}/tiers" class="space-y-3 text-xs">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea name="tiers_text" rows="5" placeholder="10:8.99:585000&#10;30:7.99:520000" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">{% for tier in product.bulk_tiers %}{{ tier.min_qty }}:{{ tier.unit_price_usd }}{% if tier.unit_price_irt is not none %}:{{ tier.unit_price_irt }}{% endif %}
+{% endfor %}</textarea>
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold">
+          Save Bulk Tiers
+        </button>
+      </form>
+    </div>
+
+    <!-- Auto-Delivery Encrypted Stock Upload -->
+    <div class="rounded-2xl bg-slate-900 border border-slate-800 p-6">
+      <h2 class="text-base font-bold text-white mb-3">🔐 Import Auto-Delivery Stock</h2>
+      <p class="text-xs text-slate-400 mb-3">Credentials are Fernet-encrypted at rest (AES-128-CBC + HMAC).</p>
+      <form method="post" action="/admin/catalog/products/{{ product.id }}/stock" enctype="multipart/form-data" class="space-y-3 text-xs">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div>
+          <label class="block text-slate-400 mb-1">Paste Stock Lines (1 item per line)</label>
+          <textarea name="stock_lines" rows="5" placeholder="user1@example.com:pass1&#10;KEY-XXXX-YYYY-ZZZZ" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono"></textarea>
+        </div>
+        <div>
+          <label class="block text-slate-400 mb-1">Or Upload .txt / .csv File (≤ 5MB)</label>
+          <input type="file" name="stock_file" accept=".txt,.csv" class="w-full text-slate-400">
+        </div>
+        <label class="inline-flex items-center gap-2 text-slate-300">
+          <input type="checkbox" name="deduplicate" value="true" checked> Skip duplicate payloads
+        </label>
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
+          Encrypt & Import Stock
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
