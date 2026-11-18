@@ -1,0 +1,64 @@
+/* Custom styles for Telegram Digital Shop Web Admin & Mini App */
+
+:root {
+  --brand-primary: #3b82f6;
+  --brand-success: #22c55e;
+  --brand-danger: #ef4444;
+  --brand-warning: #eab308;
+}
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+[dir="rtl"] {
+  text-align: right;
+}
+
+.color-swatch-btn {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.color-swatch-btn:hover {
+  transform: scale(1.08);
+}
+
+.color-swatch-btn.active {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+  transform: scale(1.1);
+}
+
+.emoji-badge-btn {
+  transition: transform 0.12s ease, background-color 0.12s ease;
+}
+
+.emoji-badge-btn.active {
+  background-color: #dbeafe;
+  border-color: #2563eb;
+  transform: scale(1.08);
+}
+
+.tg-inline-preview {
+  background: rgba(30, 41, 59, 0.92);
+  color: #f8fafc;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.web-hex-preview {
+  border-radius: 0.5rem;
+  padding: 0.55rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+}
