@@ -2035,9 +2035,12 @@ async def test_lifespan_webhook_and_polling_modes_and_workflow_sync(
                 events.append(("polling_cancelled", True))
                 raise
 
+    import app.bot
+
     fake_dp_mod = types.ModuleType("app.bot.dispatcher")
     fake_dp_mod.create_full_dispatcher = lambda **kwargs: FakeDP()  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "app.bot.dispatcher", fake_dp_mod)
+    monkeypatch.setattr(app.bot, "dispatcher", fake_dp_mod, raising=False)
     monkeypatch.setattr(main_mod, "Bot", FakeBot)
 
     # Webhook mode
@@ -2081,6 +2084,64 @@ async def test_lifespan_webhook_and_polling_modes_and_workflow_sync(
     assert ("delete_webhook", False) in events
     assert ("polling_started", False) in events
     assert ("polling_cancelled", True) in events
+
+
+async def test_real_create_full_dispatcher_shares_services_with_web_admin(
+    tmp_path: Path,
+    db_session_factory,
+    redis_client,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from app import main as main_mod
+    from app.services.shop_service import ShopService
+
+    class FakeBotSession:
+        async def close(self) -> None:
+            return None
+
+    class FakeBot:
+        id = 98765432
+
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            self.session = FakeBotSession()
+
+    monkeypatch.setattr(main_mod, "Bot", FakeBot)
+
+    settings = _make_test_settings(tmp_path, bot_mode="webhook")
+    app = main_mod.create_app(settings=settings)
+    app.state.session_factory = db_session_factory
+    app.state.redis = redis_client
+    app.state.skip_startup_seed = True
+
+    pre_shop_svc = ShopService(db_session_factory, encryption_key=settings.ENCRYPTION_KEY)
+    app.state.shop_service = pre_shop_svc
+
+    async with main_mod.lifespan(app):
+        dp = app.state.dp
+        assert dp is not None
+        assert app.state.shop_service is pre_shop_svc
+        assert dp.workflow_data["shop_service"] is pre_shop_svc
+        for attr in (
+            "user_service",
+            "payment_service",
+            "support_service",
+            "cms_service",
+            "analytics_service",
+            "broadcast_service",
+            "translation_service",
+        ):
+            assert getattr(app.state, attr) is dp.workflow_data[attr]
+        assert app.state.i18n is app.state.translation_service
+
+        fake_req = SimpleNamespace(app=app)
+        assert get_shop_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is pre_shop_svc
+        assert get_payment_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is dp.workflow_data["payment_service"]
+        assert get_user_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is dp.workflow_data["user_service"]
+        assert get_support_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is dp.workflow_data["support_service"]
+        assert get_cms_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is dp.workflow_data["cms_service"]
+        assert get_analytics_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is dp.workflow_data["analytics_service"]
+        assert get_broadcast_service(fake_req, settings=settings, session_factory=db_session_factory, redis_client=redis_client, translation_service=app.state.translation_service) is dp.workflow_data["broadcast_service"]
 
 
 async def test_uploads_qr_stock_dm_photo_and_validation(tmp_path: Path) -> None:

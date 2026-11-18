@@ -321,11 +321,16 @@ def get_translation_service(
     redis_client: Redis | None = Depends(get_redis_dep),
 ) -> TranslationService:
     """Return the TranslationService instance."""
-    existing = getattr(request.app.state, "translation_service", None)
+    existing = getattr(request.app.state, "translation_service", None) or getattr(
+        request.app.state, "i18n", None
+    )
     if isinstance(existing, TranslationService):
+        request.app.state.translation_service = existing
+        request.app.state.i18n = existing
         return existing
     svc = TranslationService(session_factory=session_factory, redis_client=redis_client)
     request.app.state.translation_service = svc
+    request.app.state.i18n = svc
     return svc
 
 

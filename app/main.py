@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hmac
+import importlib
 import inspect
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager, suppress
@@ -38,10 +39,21 @@ def _is_usable_bot_token(token: str) -> bool:
     return ":" in cleaned
 
 
+_SHARED_SERVICE_ATTRS: tuple[str, ...] = (
+    "user_service",
+    "shop_service",
+    "payment_service",
+    "support_service",
+    "cms_service",
+    "analytics_service",
+    "broadcast_service",
+)
+
+
 def _load_dispatcher_factory() -> Any | None:
-    """Import dispatcher factory from app.bot.dispatcher gracefully."""
+    """Import dispatcher factory from app.bot.dispatcher via sys.modules-aware importlib."""
     try:
-        from app.bot import dispatcher as dp_mod
+        dp_mod = importlib.import_module("app.bot.dispatcher")
 
         for fn_name in ("create_full_dispatcher", "build_dispatcher"):
             fn = getattr(dp_mod, fn_name, None)
@@ -52,6 +64,17 @@ def _load_dispatcher_factory() -> Any | None:
     return None
 
 
+def _sync_dispatcher_services_to_state(dp: Any, app_state: Any) -> None:
+    """Mirror initialized domain services from Dispatcher workflow_data onto FastAPI app.state."""
+    workflow_data = getattr(dp, "workflow_data", None)
+    if not isinstance(workflow_data, dict):
+        return
+    for svc_attr in _SHARED_SERVICE_ATTRS:
+        svc_val = workflow_data.get(svc_attr)
+        if svc_val is not None and getattr(app_state, svc_attr, None) is None:
+            setattr(app_state, svc_attr, svc_val)
+
+
 def _invoke_dispatcher_factory(
     factory_fn: Any,
     *,
@@ -60,6 +83,7 @@ def _invoke_dispatcher_factory(
     redis_client: Redis | None,
     translation_service: TranslationService,
     bot: Any | None = None,
+    app_state: Any | None = None,
 ) -> Any:
     """Call create_full_dispatcher / build_dispatcher matching its declared parameter signature."""
     sig = inspect.signature(factory_fn)
@@ -75,6 +99,15 @@ def _invoke_dispatcher_factory(
         "i18n": translation_service,
         "bot": bot,
     }
+    if app_state is not None:
+        services_bag = getattr(app_state, "services", None)
+        for svc_attr in _SHARED_SERVICE_ATTRS:
+            val = getattr(app_state, svc_attr, None)
+            if val is None and isinstance(services_bag, dict):
+                val = services_bag.get(svc_attr)
+            if val is not None:
+                available[svc_attr] = val
+
     kwargs: dict[str, Any] = {}
     for name, param in sig.parameters.items():
         if param.kind in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
@@ -109,10 +142,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         redis_client = getattr(app.state, "redis", None)
 
     session_factory = app.state.session_factory
-    app.state.translation_service = TranslationService(
-        session_factory=session_factory,
-        redis_client=redis_client,
-    )
+    existing_i18n = getattr(app.state, "translation_service", None) or getattr(app.state, "i18n", None)
+    if existing_i18n is None:
+        existing_i18n = TranslationService(
+            session_factory=session_factory,
+            redis_client=redis_client,
+        )
+    app.state.translation_service = existing_i18n
+    app.state.i18n = existing_i18n
 
     if not getattr(app.state, "skip_startup_seed", False):
         try:
@@ -145,26 +182,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                         redis_client=redis_client,
                         translation_service=app.state.translation_service,
                         bot=bot,
+                        app_state=app.state,
                     )
                     if inspect.isawaitable(dp):
                         dp = await dp
                     app.state.dp = dp
-                    workflow_data = getattr(dp, "workflow_data", None)
-                    if isinstance(workflow_data, dict):
-                        for svc_attr in (
-                            "user_service",
-                            "shop_service",
-                            "payment_service",
-                            "support_service",
-                            "cms_service",
-                            "analytics_service",
-                            "broadcast_service",
-                        ):
-                            svc_val = workflow_data.get(svc_attr)
-                            if svc_val is not None and getattr(app.state, svc_attr, None) is None:
-                                setattr(app.state, svc_attr, svc_val)
                 except Exception as exc:
                     logger.warning("Failed to initialize aiogram Dispatcher: %s", exc)
+
+        if dp is not None:
+            _sync_dispatcher_services_to_state(dp, app.state)
 
         if bot is not None and dp is not None:
             if settings.BOT_MODE == "webhook":
