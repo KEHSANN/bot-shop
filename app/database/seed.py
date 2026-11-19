@@ -106,6 +106,11 @@ async def seed_app_settings(session: AsyncSession) -> int:
             "5",
             "Default inventory threshold for dashboard low-stock alerts",
         ),
+        (
+            SettingKey.GUIDE_URL.value,
+            "",
+            "Optional guide URL displayed on manual product activation prompts",
+        ),
     ]
     existing = set((await session.execute(select(AppSetting.key))).scalars().all())
     inserted = 0

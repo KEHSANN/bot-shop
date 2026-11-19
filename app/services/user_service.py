@@ -81,6 +81,7 @@ class UserService:
                     first_name=cleaned_first,
                     last_name=cleaned_last,
                     language_code=normalized_lang,
+                    language_selected=False,
                     is_admin=is_env_admin,
                 )
                 update_values: dict[str, object] = {
@@ -215,6 +216,7 @@ class UserService:
                 if row is None:
                     raise NotFoundError(f"User with telegram_id={telegram_id} was not found")
                 row.language_code = normalized
+                row.language_selected = True
                 await session.flush()
                 await session.refresh(row)
                 return UserDTO.model_validate(row)

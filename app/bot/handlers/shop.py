@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from decimal import Decimal
+import re
+from urllib.parse import urlparse
 
 from aiogram import F, Router
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 
 from app.bot.keyboards.common_kb import (
     CatCB,
@@ -34,7 +37,7 @@ from app.bot.keyboards.shop_kb import (
 )
 from app.bot.states import ShopStates
 from app.config import Settings, get_settings
-from app.core.constants import Currency, DEFAULT_LANGUAGE, DeliveryType, OrderStatus
+from app.core.constants import Currency, DEFAULT_LANGUAGE, DeliveryType, OrderStatus, SettingKey
 from app.core.exceptions import (
     InsufficientBalanceError,
     InsufficientStockError,
@@ -45,9 +48,10 @@ from app.core.exceptions import (
 )
 from app.core.logging import get_logger
 from app.core.security import escape_html, sanitize_username
+from app.database.models import AppSetting
 from app.locales.i18n import TranslationService
 from app.services.dtos import OrderDTO, ProductDetailDTO, PurchaseRequestDTO, UserDTO
-from app.services.interfaces import ShopServiceProtocol
+from app.services.interfaces import CMSServiceProtocol, ShopServiceProtocol
 
 logger = get_logger(__name__)
 
@@ -81,6 +85,98 @@ async def _safe_edit_or_send(
         if "message is not modified" in str(exc).lower():
             return
         await msg.answer(text=text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+
+_MD_LINK_RE = re.compile(r"\[([^\[\]]+)\]\((https?://[^\s<>()\"']+)\)")
+
+
+def _is_safe_http_url(url: str | None) -> bool:
+    if not url:
+        return False
+    cleaned = url.strip()
+    if not cleaned or len(cleaned) > 500 or any(ch.isspace() for ch in cleaned):
+        return False
+    parsed = urlparse(cleaned)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+async def _resolve_guide_url(
+    *,
+    cms_service: CMSServiceProtocol | None,
+    shop_service: ShopServiceProtocol,
+) -> str:
+    if cms_service is not None:
+        try:
+            raw = (await cms_service.get_setting(SettingKey.GUIDE_URL.value, default="")) or ""
+            cleaned = raw.strip()
+            return cleaned if _is_safe_http_url(cleaned) else ""
+        except Exception as exc:
+            logger.warning("Failed reading guide_url from cms_service: %s", exc)
+    session_factory = getattr(shop_service, "_session_factory", None)
+    if session_factory is not None:
+        try:
+            async with session_factory() as session:
+                raw = (
+                    await session.execute(
+                        select(AppSetting.value).where(AppSetting.key == SettingKey.GUIDE_URL.value)
+                    )
+                ).scalar_one_or_none()
+            cleaned = (raw or "").strip()
+            return cleaned if _is_safe_http_url(cleaned) else ""
+        except Exception as exc:
+            logger.warning("Failed reading guide_url from DB: %s", exc)
+    return ""
+
+
+def _render_manual_prompt_html(
+    raw_prompt: str,
+    *,
+    guide_url: str,
+    guide_label: str,
+) -> tuple[str, InlineKeyboardMarkup | None]:
+    """Escape untrusted prompt text while rendering safe http(s) links and {guide} placeholders."""
+    safe_cms_url = guide_url.strip() if _is_safe_http_url(guide_url) else ""
+    inline_urls: list[str] = []
+
+    parts: list[str] = []
+    pos = 0
+    for match in _MD_LINK_RE.finditer(raw_prompt):
+        parts.append(escape_html(raw_prompt[pos : match.start()]))
+        label_txt, url_txt = match.group(1), match.group(2)
+        if _is_safe_http_url(url_txt):
+            parts.append(f'<a href="{escape_html(url_txt)}">{escape_html(label_txt)}</a>')
+            inline_urls.append(url_txt)
+        else:
+            parts.append(escape_html(match.group(0)))
+        pos = match.end()
+    parts.append(escape_html(raw_prompt[pos:]))
+    rendered = "".join(parts)
+
+    effective_url = safe_cms_url or (inline_urls[0] if inline_urls else "")
+    has_guide_placeholder = "{guide}" in rendered or "{guide_url}" in rendered
+
+    if "{guide_url}" in rendered:
+        rendered = rendered.replace("{guide_url}", escape_html(effective_url) if effective_url else "")
+
+    if "{guide}" in rendered:
+        if effective_url:
+            guide_html = f'<a href="{escape_html(effective_url)}">{escape_html(guide_label)}</a>'
+        else:
+            guide_html = ""
+        rendered = rendered.replace("{guide}", guide_html)
+
+    if effective_url and not has_guide_placeholder and not inline_urls:
+        rendered = f'{rendered.rstrip()}\n\n<a href="{escape_html(effective_url)}">{escape_html(guide_label)}</a>'
+
+    rendered = rendered.strip()
+    kb = (
+        InlineKeyboardMarkup(
+            inline_keyboard=[[InlineKeyboardButton(text=guide_label, url=effective_url)]]
+        )
+        if effective_url
+        else None
+    )
+    return rendered, kb
 
 
 async def _clear_shop_fsm_if_active(state: FSMContext) -> None:
@@ -476,6 +572,7 @@ async def cb_purchase_product(
     lang: str,
     i18n: TranslationService,
     shop_service: ShopServiceProtocol,
+    cms_service: CMSServiceProtocol | None = None,
     settings: Settings | None = None,
 ) -> None:
     """Execute atomic wallet purchase and deliver credentials or prompt for manual input."""
@@ -553,13 +650,27 @@ async def cb_purchase_product(
             or product.manual_prompts_json.get(DEFAULT_LANGUAGE)
             or ""
         ).strip()
-        prompt_body = (
-            escape_html(custom_prompt)
-            if custom_prompt
-            else await i18n.get_text("shop.manual_input_prompt", lang)
-        )
+        guide_url = await _resolve_guide_url(cms_service=cms_service, shop_service=shop_service)
+        guide_label = await i18n.get_text("shop.guide_link_label", lang)
+        if custom_prompt:
+            prompt_body, guide_kb = _render_manual_prompt_html(
+                custom_prompt,
+                guide_url=guide_url,
+                guide_label=guide_label,
+            )
+        else:
+            prompt_body = await i18n.get_text("shop.manual_input_prompt", lang)
+            guide_kb = (
+                InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text=guide_label, url=guide_url)]]
+                )
+                if guide_url
+                else None
+            )
+            if guide_url:
+                prompt_body = f'{prompt_body}\n\n<a href="{escape_html(guide_url)}">{escape_html(guide_label)}</a>'
         text = f"🧾 <code>{escape_html(result.order.order_number)}</code>\n\n{prompt_body}"
-        await _safe_edit_or_send(callback, text, reply_markup=None)
+        await _safe_edit_or_send(callback, text, reply_markup=guide_kb)
         await callback.answer()
         return
 

@@ -1440,3 +1440,38 @@ async def test_shop_bot_handlers_spa_auto_manual_and_idor(
         await _cleanup_entities(
             db_session_factory, user_ids=user_ids, category_ids=cat_ids, product_ids=prod_ids
         )
+
+
+def test_manual_prompt_guide_link_and_xss_protection() -> None:
+    from app.bot.handlers.shop import _render_manual_prompt_html
+
+    # 1. {guide} with configured CMS guide_url -> clickable <a> + inline URL button
+    html1, kb1 = _render_manual_prompt_html(
+        "Send: email@gmail.com|password|2FA_32_character\n\n{guide}",
+        guide_url="https://telegra.ph/2fa-setup",
+        guide_label="📖 Guide",
+    )
+    assert '<a href="https://telegra.ph/2fa-setup">📖 Guide</a>' in html1
+    assert "email@gmail.com|password|2FA_32_character" in html1
+    assert kb1 is not None and kb1.inline_keyboard[0][0].url == "https://telegra.ph/2fa-setup"
+
+    # 2. {guide} when guide_url is not configured yet -> clean text without broken href
+    html2, kb2 = _render_manual_prompt_html(
+        "Send: email@gmail.com|password|2FA_32_character\n\n{guide}",
+        guide_url="",
+        guide_label="📖 Guide",
+    )
+    assert "<a " not in html2
+    assert "{guide}" not in html2
+    assert kb2 is None
+
+    # 3. Markdown [label](https://...) works, while javascript: and raw <script> are neutralized
+    html3, kb3 = _render_manual_prompt_html(
+        "Send <script>x</script> [bad](javascript:alert(1)) or [راهنما](https://example.com/g?a=1&b=2)",
+        guide_url="",
+        guide_label="📖 راهنما",
+    )
+    assert "&lt;script&gt;x&lt;/script&gt;" in html3
+    assert "javascript:alert(1)" in html3 and '<a href="javascript:' not in html3
+    assert '<a href="https://example.com/g?a=1&amp;b=2">راهنما</a>' in html3
+    assert kb3 is not None and kb3.inline_keyboard[0][0].url == "https://example.com/g?a=1&b=2"

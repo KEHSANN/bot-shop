@@ -317,7 +317,16 @@ async def test_e2e_start_strict_5_buttons_and_pinned_products(
     )
 
     try:
+        # First /start prompts the 12-language picker before entering Main Menu
         await dp.feed_update(bot, _msg_update(1, tg_id=user_id, text="/start", username="e2e_start"))
+        lang_markup = bot.last_markup_for(user_id)
+        assert lang_markup is not None
+        lang_cbs = [btn.callback_data or "" for row in lang_markup.inline_keyboard for btn in row]
+        assert [LangCB.unpack(cb).code for cb in lang_cbs] == list(LANGUAGE_ORDER)
+
+        # Selecting a language persists language_selected=True and renders the strict 5-button Main Menu
+        bot.clear_calls()
+        await dp.feed_update(bot, _cb_update(2, tg_id=user_id, data=LangCB(code="en").pack()))
         markup = bot.last_markup_for(user_id)
         assert markup is not None
 
@@ -346,6 +355,14 @@ async def test_e2e_start_strict_5_buttons_and_pinned_products(
         for forbidden in FORBIDDEN_MAIN_MENU_FEATURES:
             assert forbidden.replace("_", " ") not in all_labels
             assert all(forbidden not in cb for cb in all_callbacks)
+
+        # Second /start goes straight to Main Menu without re-asking language
+        bot.clear_calls()
+        await dp.feed_update(bot, _msg_update(3, tg_id=user_id, text="/start", username="e2e_start"))
+        repeat_markup = bot.last_markup_for(user_id)
+        assert repeat_markup is not None
+        repeat_cbs = [btn.callback_data or "" for row in repeat_markup.inline_keyboard for btn in row]
+        assert "menu:shop" in repeat_cbs
     finally:
         await dp.storage.close()
         await _cleanup_users_and_catalog(db_session_factory, redis_client, tg_ids=[user_id])

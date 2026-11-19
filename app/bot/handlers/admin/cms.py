@@ -69,16 +69,19 @@ async def _render_settings_view(target: CallbackQuery | Message, data: dict[str,
         maint = await cms_service.get_setting(SettingKey.MAINTENANCE_MODE.value, "false")
         pin_lim = await cms_service.get_setting(SettingKey.PINNED_LIMIT.value, "4")
         low_stk = await cms_service.get_setting(SettingKey.LOW_STOCK_DEFAULT_THRESHOLD.value, "5")
+        guide_url = await cms_service.get_setting(SettingKey.GUIDE_URL.value, "")
     except ShopBotError as exc:
         await safe_edit_or_send(target, f"⚠️ {escape_html(exc.message)}", reply_markup=build_admin_back_kb(sec="cms", act="menu"))
         return
 
     maint_on = str(maint).strip().lower() in {"true", "1", "yes", "on"}
+    guide_display = escape_html(guide_url) if guide_url else "Not set"
     text = (
         f"⚙️ <b>Application Settings</b>\n\n"
         f"🛠 Maintenance Mode: <b>{'ON' if maint_on else 'OFF'}</b>\n"
         f"📌 Pinned Products Limit: <b>{escape_html(pin_lim or '4')}</b>\n"
-        f"⚠️ Default Low-Stock Threshold: <b>{escape_html(low_stk or '5')}</b>"
+        f"⚠️ Default Low-Stock Threshold: <b>{escape_html(low_stk or '5')}</b>\n"
+        f"📖 Guide URL: <code>{guide_display}</code>"
     )
     await safe_edit_or_send(target, text, reply_markup=build_settings_kb(maintenance_on=maint_on))
 
@@ -236,6 +239,24 @@ async def msg_cms_text_save(message: Message, state: FSMContext, **data: Any) ->
             await _render_ui_button_card(message, btn_id, data)
             return
 
+        if mode == "guide_url":
+            new_url = "" if raw.lower() in {"clear", "none", "-"} else raw
+            if new_url and (
+                len(new_url) > 500
+                or any(ch.isspace() for ch in new_url)
+                or not new_url.lower().startswith(("https://", "http://"))
+            ):
+                await safe_edit_or_send(
+                    message,
+                    "❌ Invalid URL. Send an <code>https://</code> or <code>http://</code> link, or <code>clear</code>.",
+                    reply_markup=build_admin_cancel_kb(sec="set", act="list"),
+                )
+                return
+            await cms_service.set_setting(SettingKey.GUIDE_URL.value, new_url)
+            await state.clear()
+            await _render_settings_view(message, data)
+            return
+
         if mode == "upsert":
             parts = [p.strip() for p in raw.split("|", 2)]
             if len(parts) != 3 or not parts[0] or not parts[2]:
@@ -390,3 +411,21 @@ async def cb_settings_numeric(callback: CallbackQuery, callback_data: AdmCB, **d
         await safe_answer_callback(callback, exc.message, show_alert=True)
         return
     await _render_settings_view(callback, data)
+
+
+@router.callback_query(AdmCB.filter((F.sec == "set") & (F.act == "guide_url")))
+async def cb_settings_guide_url_prompt(callback: CallbackQuery, state: FSMContext, **data: Any) -> None:
+    try:
+        cms_service = get_service(data, "cms_service")
+        curr = await cms_service.get_setting(SettingKey.GUIDE_URL.value, "")
+    except ShopBotError:
+        curr = ""
+    await state.set_state(AdminStates.waiting_cms_text)
+    await state.update_data(cms_mode="guide_url")
+    await safe_edit_or_send(
+        callback,
+        f"📖 <b>Set Guide URL for Manual Product Prompts</b>\n\n"
+        f"Current: <code>{escape_html(curr or 'Not set')}</code>\n\n"
+        f"Send a valid <code>https://...</code> URL (or <code>clear</code> to remove):",
+        reply_markup=build_admin_cancel_kb(sec="set", act="list"),
+    )

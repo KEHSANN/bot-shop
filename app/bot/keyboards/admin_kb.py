@@ -1238,6 +1238,12 @@ def build_settings_kb(*, maintenance_on: bool = False) -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="📖 Set Guide URL (Manual Prompts)",
+                    callback_data=AdmCB(sec="set", act="guide_url").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
                     text="🔙 Back to CMS Menu",
                     callback_data=AdmCB(sec="cms", act="menu").pack(),
                 )

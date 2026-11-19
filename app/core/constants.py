@@ -206,3 +206,4 @@ class SettingKey(str, Enum):
     MAINTENANCE_MODE = "maintenance_mode"
     PINNED_LIMIT = "pinned_limit"
     LOW_STOCK_DEFAULT_THRESHOLD = "low_stock_default_threshold"
+    GUIDE_URL = "guide_url"

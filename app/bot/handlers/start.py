@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.bot.handlers import format_irt, format_usd, safe_edit_or_send
-from app.bot.keyboards.common_kb import MenuCB, build_main_menu_kb
+from app.bot.keyboards.common_kb import MenuCB, build_language_kb, build_main_menu_kb
 from app.core.constants import DEFAULT_LANGUAGE, SettingKey
 from app.core.logging import get_logger
 from app.core.security import sanitize_username
@@ -147,9 +147,23 @@ async def cmd_start(
     shop_service: Any | None = None,
     cms_service: Any | None = None,
 ) -> None:
-    """Handle /start or /cancel by clearing active FSM state and displaying the Main Menu."""
+    """Handle /start or /cancel by clearing active FSM state and displaying language picker or Main Menu."""
     if state is not None:
         await state.clear()
+    raw_cmd = (message.text or "").strip().split(maxsplit=1)[0].lower()
+    if raw_cmd.startswith("/start") and not user.language_selected:
+        active_lang = i18n.normalize_lang(lang or user.language_code)
+        prompt = await i18n.get_text("lang.select_prompt", active_lang)
+        if active_lang != DEFAULT_LANGUAGE:
+            en_prompt = await i18n.get_text("lang.select_prompt", DEFAULT_LANGUAGE)
+            if en_prompt and en_prompt != prompt:
+                prompt = f"{prompt}\n{en_prompt}"
+        await safe_edit_or_send(
+            message,
+            prompt,
+            reply_markup=build_language_kb(current_lang=None, include_back=False),
+        )
+        return
     await render_main_menu(
         message,
         user=user,

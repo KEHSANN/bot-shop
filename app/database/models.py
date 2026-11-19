@@ -42,6 +42,9 @@ class User(Base, TimestampMixin):
     first_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     language_code: Mapped[str] = mapped_column(String(10), default="en", server_default="en", nullable=False)
+    language_selected: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=sa.false(), nullable=False
+    )
     balance_usd: Mapped[Decimal] = mapped_column(
         Numeric(18, 8), default=Decimal("0.00000000"), server_default="0", nullable=False
     )

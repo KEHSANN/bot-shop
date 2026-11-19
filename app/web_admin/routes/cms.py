@@ -205,6 +205,10 @@ def _validate_setting_pair(key: str, value: str) -> tuple[str, str]:
         if v.lower() not in {"manual", "live"}:
             raise ValidationError("rate_mode must be 'manual' or 'live'")
         v = v.lower()
+    elif k == SettingKey.GUIDE_URL.value:
+        if v:
+            if len(v) > 500 or not v.lower().startswith(("https://", "http://")):
+                raise ValidationError("guide_url must start with https:// or http:// (or be empty)")
     return k, v
 
 

@@ -197,6 +197,12 @@
         </div>
       </div>
 
+      <div>
+        <label class="block text-slate-300 font-semibold mb-1">Manual Prompt Guide URL (Optional)</label>
+        <input type="url" name="guide_url" value="{{ settings_map.get('guide_url', '') }}" placeholder="https://telegra.ph/your-2fa-guide" class="w-full rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-white font-mono">
+        <p class="text-[11px] text-slate-400 mt-1">Used automatically for <code>{guide}</code> placeholders and the localized Guide button in manual product prompts.</p>
+      </div>
+
       <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
         Save Runtime Settings
       </button>

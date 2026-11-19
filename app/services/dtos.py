@@ -40,6 +40,7 @@ class UserDTO(DTOBase):
     first_name: str | None = None
     last_name: str | None = None
     language_code: str = "en"
+    language_selected: bool = False
     balance_usd: Decimal = Decimal("0")
     balance_irt: Decimal = Decimal("0")
     is_blocked: bool = False

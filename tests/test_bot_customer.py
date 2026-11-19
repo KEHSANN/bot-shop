@@ -629,7 +629,7 @@ async def test_middlewares_and_customer_handlers_end_to_end(
     bot = RecordingBot()
 
     try:
-        # 1. /start with XSS payload in username -> escaped HTML & strict 5-button Main Menu
+        # 1a. First /start for new user prompts 12-language selector (no Back button)
         await dp.feed_update(
             bot,
             _make_message_update(
@@ -641,13 +641,47 @@ async def test_middlewares_and_customer_handlers_end_to_end(
             ),
         )
         assert len(bot.calls) == 1
-        start_call = bot.calls[-1]
-        assert isinstance(start_call, SendMessage)
+        first_call = bot.calls[-1]
+        assert isinstance(first_call, SendMessage)
+        assert isinstance(first_call.reply_markup, InlineKeyboardMarkup)
+        first_cbs = [b.callback_data or "" for row in first_call.reply_markup.inline_keyboard for b in row]
+        assert [LangCB.unpack(cb).code for cb in first_cbs] == list(LANGUAGE_ORDER)
+
+        # 1b. Selecting 'en' marks language_selected=True & edits in-place to strict 5-button Main Menu (XSS escaped)
+        bot.calls.clear()
+        await dp.feed_update(
+            bot,
+            _make_callback_update(
+                tg_id=cust_tg_id,
+                data=LangCB(code="en").pack(),
+                username="bad<script>user",
+                first_name="<b>Eve</b>",
+            ),
+        )
+        start_call = next(c for c in bot.calls if isinstance(c, EditMessageText))
         assert "&lt;script&gt;" in start_call.text
         assert "<script>" not in start_call.text
         assert "$" in start_call.text
         assert "تومان" not in start_call.text
         assert isinstance(start_call.reply_markup, InlineKeyboardMarkup)
+
+        # 1c. Subsequent /start skips language prompt and opens Main Menu directly
+        bot.calls.clear()
+        await dp.feed_update(
+            bot,
+            _make_message_update(
+                tg_id=cust_tg_id,
+                text="/start",
+                username="bad<script>user",
+                first_name="<b>Eve</b>",
+                lang_code="en",
+            ),
+        )
+        repeat_call = bot.calls[-1]
+        assert isinstance(repeat_call, SendMessage)
+        assert "$" in repeat_call.text
+        repeat_cbs = [b.callback_data or "" for row in repeat_call.reply_markup.inline_keyboard for b in row]
+        assert MenuCB(action="shop").pack() in repeat_cbs
 
         # 2. Language switch: open language menu in-place -> select Persian ('fa') -> edits in-place with IRT balance
         bot.calls.clear()
@@ -899,7 +933,13 @@ async def test_middlewares_and_customer_handlers_end_to_end(
             bot.calls.clear()
             await dp.feed_update(bot, _make_message_update(tg_id=admin_tg_id, text="/start"))
             assert len(bot.calls) == 1
-            assert "$" in bot.calls[0].text
+            assert bot.calls[0].text != await i18n.get_text("err.maintenance", "en")
+            bot.calls.clear()
+            await dp.feed_update(
+                bot,
+                _make_callback_update(tg_id=admin_tg_id, data=LangCB(code="en").pack()),
+            )
+            assert any(isinstance(c, EditMessageText) and "$" in c.text for c in bot.calls)
         finally:
             if orig_maint is not None:
                 async with db_session_factory() as session:
