@@ -1787,9 +1787,9 @@ async def test_payments_wallets_qr_fiat_rate_orders_support_cms_broadcast(tmp_pa
             },
         )
         assert set_resp.status_code == 200
-        assert doubles["cms_service"].settings["force_join_enabled"].value == "true"
+        assert doubles["cms"].settings["force_join_enabled"].value == "true"
         assert (
-            doubles["cms_service"].settings["force_join_channels"].value
+            doubles["cms"].settings["force_join_channels"].value
             == "@myshop\n-1001234567890|https://t.me/+abc123|VIP"
         )
 
