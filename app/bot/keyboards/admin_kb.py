@@ -1197,15 +1197,28 @@ def build_ui_button_detail_kb(btn: UIButtonDTO) -> InlineKeyboardMarkup:
     )
 
 
-def build_settings_kb(*, maintenance_on: bool = False) -> InlineKeyboardMarkup:
-    """Build AppSettings toggle keyboard (Maintenance Mode & Pinned Limit)."""
+def build_settings_kb(*, maintenance_on: bool = False, force_join_on: bool = False) -> InlineKeyboardMarkup:
+    """Build AppSettings toggle keyboard (Maintenance Mode, Force Join, Pinned Limit & Guide URL)."""
     maint_text = "🟢 Disable Maintenance Mode" if maintenance_on else "🛠 Enable Maintenance Mode"
+    fjoin_text = "🔴 Disable Force Channel Join" if force_join_on else "📢 Enable Force Channel Join"
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=maint_text,
                     callback_data=AdmCB(sec="set", act="tog_maint").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=fjoin_text,
+                    callback_data=AdmCB(sec="set", act="tog_fjoin").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📣 Set Force-Join Channel(s)",
+                    callback_data=AdmCB(sec="set", act="fjoin_ch").pack(),
                 )
             ],
             [

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.bot.handlers import safe_edit_or_send
 from app.bot.handlers.start import render_main_menu
 from app.bot.keyboards.common_kb import LangCB, MenuCB, build_language_kb
+from app.bot.middlewares.force_join_mw import check_user_force_join, send_force_join_prompt
 from app.core.constants import DEFAULT_LANGUAGE, SUPPORTED_LANGUAGES
 from app.locales.i18n import TranslationService
 from app.services.dtos import UserDTO
@@ -76,6 +77,8 @@ async def cb_select_language(
     session_factory: async_sessionmaker[AsyncSession] | None = None,
     shop_service: Any | None = None,
     cms_service: Any | None = None,
+    is_admin: bool = False,
+    redis_client: Any | None = None,
 ) -> None:
     """Persist selected language and refresh Main Menu in-place in the new locale."""
     if state is not None:
@@ -89,6 +92,25 @@ async def cb_select_language(
     updated_user = await user_service.set_language(user.telegram_id, code)
     new_lang = updated_user.language_code
     changed_text = await i18n.get_text("lang.changed", new_lang)
+
+    if not is_admin and callback.bot is not None:
+        missing = await check_user_force_join(
+            bot=callback.bot,
+            user_telegram_id=updated_user.telegram_id,
+            cms_service=cms_service,
+            session_factory=session_factory,
+            redis_client=redis_client,
+        )
+        if missing:
+            await send_force_join_prompt(
+                callback,
+                missing_channels=missing,
+                i18n=i18n,
+                lang=new_lang,
+                prefix_text=changed_text,
+                toast_text=changed_text,
+            )
+            return
 
     await render_main_menu(
         callback,

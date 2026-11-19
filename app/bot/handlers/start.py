@@ -200,6 +200,47 @@ async def cb_main_menu(
     )
 
 
+@router.callback_query(MenuCB.filter(F.action == "check_join"))
+async def cb_check_join(
+    callback: CallbackQuery,
+    user: UserDTO,
+    i18n: TranslationService,
+    lang: str = DEFAULT_LANGUAGE,
+    state: FSMContext | None = None,
+    session_factory: async_sessionmaker[AsyncSession] | None = None,
+    shop_service: Any | None = None,
+    cms_service: Any | None = None,
+) -> None:
+    """Enter Main Menu (or language picker) after ForceJoinMiddleware verifies channel membership."""
+    if state is not None:
+        await state.clear()
+    active_lang = i18n.normalize_lang(lang or user.language_code)
+    verified_toast = await i18n.get_text("force_join.verified_toast", active_lang)
+    if not user.language_selected:
+        prompt = await i18n.get_text("lang.select_prompt", active_lang)
+        if active_lang != DEFAULT_LANGUAGE:
+            en_prompt = await i18n.get_text("lang.select_prompt", DEFAULT_LANGUAGE)
+            if en_prompt and en_prompt != prompt:
+                prompt = f"{prompt}\n{en_prompt}"
+        await safe_edit_or_send(
+            callback,
+            prompt,
+            reply_markup=build_language_kb(current_lang=None, include_back=False),
+            toast_text=verified_toast,
+        )
+        return
+    await render_main_menu(
+        callback,
+        user=user,
+        i18n=i18n,
+        lang=active_lang,
+        session_factory=session_factory,
+        shop_service=shop_service,
+        cms_service=cms_service,
+        toast_text=verified_toast,
+    )
+
+
 @router.callback_query(MenuCB.filter(F.action == "noop"))
 async def cb_noop(callback: CallbackQuery) -> None:
     """Acknowledge informational / non-interactive inline buttons."""

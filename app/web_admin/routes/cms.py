@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from app.bot.middlewares.force_join_mw import validate_force_join_channels_raw
 from app.core.constants import (
     FORBIDDEN_MAIN_MENU_FEATURES,
     LANGUAGE_ORDER,
@@ -209,6 +210,12 @@ def _validate_setting_pair(key: str, value: str) -> tuple[str, str]:
         if v:
             if len(v) > 500 or not v.lower().startswith(("https://", "http://")):
                 raise ValidationError("guide_url must start with https:// or http:// (or be empty)")
+    elif k == SettingKey.FORCE_JOIN_ENABLED.value:
+        if v.lower() not in {"true", "false"}:
+            raise ValidationError("force_join_enabled must be 'true' or 'false'")
+        v = v.lower()
+    elif k == SettingKey.FORCE_JOIN_CHANNELS.value:
+        v = validate_force_join_channels_raw(v)
     return k, v
 
 

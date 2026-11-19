@@ -203,6 +203,28 @@
         <p class="text-[11px] text-slate-400 mt-1">Used automatically for <code>{guide}</code> placeholders and the localized Guide button in manual product prompts.</p>
       </div>
 
+      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-3">
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">📢 Forced Channel Membership (عضویت اجباری کانال)</label>
+          <select name="force_join_enabled" class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white">
+            <option value="false" {% if settings_map.get('force_join_enabled', 'false') != 'true' %}selected{% endif %}>Disabled</option>
+            <option value="true" {% if settings_map.get('force_join_enabled') == 'true' %}selected{% endif %}>Enabled (Require channel join)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-slate-300 font-semibold mb-1">Required Channel(s)</label>
+          <textarea
+            name="force_join_channels"
+            rows="3"
+            placeholder="@YourChannel&#10;-1001234567890|https://t.me/+InviteLink"
+            class="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-white font-mono"
+          >{{ settings_map.get('force_join_channels', '') }}</textarea>
+          <p class="text-[11px] text-slate-400 mt-1">
+            One channel per line: <code>@YourChannel</code> or <code>https://t.me/YourChannel</code> for public channels, or <code>-1001234567890|https://t.me/+InviteLink</code> for private channels (optionally append <code>|Channel Title</code>). Add the bot as an <strong>Administrator</strong> in every required channel so it can verify membership.
+          </p>
+        </div>
+      </div>
+
       <button type="submit" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold">
         Save Runtime Settings
       </button>

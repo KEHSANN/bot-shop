@@ -25,9 +25,10 @@ from app.bot.keyboards.admin_kb import (
     build_ui_buttons_list_kb,
 )
 from app.bot.keyboards.common_kb import AdmCB
+from app.bot.middlewares.force_join_mw import validate_force_join_channels_raw
 from app.bot.states import AdminStates
 from app.core.constants import COLOR_PALETTE, SUPPORTED_LANGUAGES, SettingKey, is_valid_hex_color
-from app.core.exceptions import ShopBotError
+from app.core.exceptions import ShopBotError, ValidationError
 from app.core.logging import get_logger
 from app.core.security import escape_html
 
@@ -70,20 +71,30 @@ async def _render_settings_view(target: CallbackQuery | Message, data: dict[str,
         pin_lim = await cms_service.get_setting(SettingKey.PINNED_LIMIT.value, "4")
         low_stk = await cms_service.get_setting(SettingKey.LOW_STOCK_DEFAULT_THRESHOLD.value, "5")
         guide_url = await cms_service.get_setting(SettingKey.GUIDE_URL.value, "")
+        fjoin_en = await cms_service.get_setting(SettingKey.FORCE_JOIN_ENABLED.value, "false")
+        fjoin_ch = await cms_service.get_setting(SettingKey.FORCE_JOIN_CHANNELS.value, "")
     except ShopBotError as exc:
         await safe_edit_or_send(target, f"⚠️ {escape_html(exc.message)}", reply_markup=build_admin_back_kb(sec="cms", act="menu"))
         return
 
     maint_on = str(maint).strip().lower() in {"true", "1", "yes", "on"}
+    fjoin_on = str(fjoin_en).strip().lower() in {"true", "1", "yes", "on"}
     guide_display = escape_html(guide_url) if guide_url else "Not set"
+    fjoin_ch_display = escape_html(fjoin_ch) if fjoin_ch else "Not set"
     text = (
         f"⚙️ <b>Application Settings</b>\n\n"
         f"🛠 Maintenance Mode: <b>{'ON' if maint_on else 'OFF'}</b>\n"
+        f"📢 Force Channel Join: <b>{'ON' if fjoin_on else 'OFF'}</b>\n"
+        f"📣 Required Channel(s): <code>{fjoin_ch_display}</code>\n"
         f"📌 Pinned Products Limit: <b>{escape_html(pin_lim or '4')}</b>\n"
         f"⚠️ Default Low-Stock Threshold: <b>{escape_html(low_stk or '5')}</b>\n"
         f"📖 Guide URL: <code>{guide_display}</code>"
     )
-    await safe_edit_or_send(target, text, reply_markup=build_settings_kb(maintenance_on=maint_on))
+    await safe_edit_or_send(
+        target,
+        text,
+        reply_markup=build_settings_kb(maintenance_on=maint_on, force_join_on=fjoin_on),
+    )
 
 
 @router.callback_query(AdmCB.filter((F.sec == "cms") & (F.act == "menu")))
@@ -257,6 +268,24 @@ async def msg_cms_text_save(message: Message, state: FSMContext, **data: Any) ->
             await _render_settings_view(message, data)
             return
 
+        if mode == "force_join_channels":
+            if raw.lower() in {"clear", "none", "-"}:
+                cleaned = ""
+            else:
+                try:
+                    cleaned = validate_force_join_channels_raw(raw)
+                except ValidationError as exc:
+                    await safe_edit_or_send(
+                        message,
+                        f"❌ {escape_html(exc.message)}",
+                        reply_markup=build_admin_cancel_kb(sec="set", act="list"),
+                    )
+                    return
+            await cms_service.set_setting(SettingKey.FORCE_JOIN_CHANNELS.value, cleaned)
+            await state.clear()
+            await _render_settings_view(message, data)
+            return
+
         if mode == "upsert":
             parts = [p.strip() for p in raw.split("|", 2)]
             if len(parts) != 3 or not parts[0] or not parts[2]:
@@ -395,6 +424,42 @@ async def cb_settings_toggle_maint(callback: CallbackQuery, **data: Any) -> None
         await safe_answer_callback(callback, exc.message, show_alert=True)
         return
     await _render_settings_view(callback, data)
+
+
+@router.callback_query(AdmCB.filter((F.sec == "set") & (F.act == "tog_fjoin")))
+async def cb_settings_toggle_force_join(callback: CallbackQuery, **data: Any) -> None:
+    try:
+        cms_service = get_service(data, "cms_service")
+        curr = await cms_service.get_setting(SettingKey.FORCE_JOIN_ENABLED.value, "false")
+        is_on = str(curr).strip().lower() in {"true", "1", "yes", "on"}
+        await cms_service.set_setting(SettingKey.FORCE_JOIN_ENABLED.value, "false" if is_on else "true")
+    except ShopBotError as exc:
+        await safe_answer_callback(callback, exc.message, show_alert=True)
+        return
+    await _render_settings_view(callback, data)
+
+
+@router.callback_query(AdmCB.filter((F.sec == "set") & (F.act == "fjoin_ch")))
+async def cb_settings_force_join_channels_prompt(callback: CallbackQuery, state: FSMContext, **data: Any) -> None:
+    try:
+        cms_service = get_service(data, "cms_service")
+        curr = await cms_service.get_setting(SettingKey.FORCE_JOIN_CHANNELS.value, "")
+    except ShopBotError:
+        curr = ""
+    await state.set_state(AdminStates.waiting_cms_text)
+    await state.update_data(cms_mode="force_join_channels")
+    await safe_edit_or_send(
+        callback,
+        f"📣 <b>Set Force-Join Required Channel(s)</b>\n\n"
+        f"Current:\n<code>{escape_html(curr or 'Not set')}</code>\n\n"
+        f"Send channel(s) one per line (or comma-separated):\n"
+        f"• Public: <code>@YourChannel</code> or <code>https://t.me/YourChannel</code>\n"
+        f"• Private: <code>-1001234567890|https://t.me/+InviteLink</code>\n"
+        f"• Optional label: append <code>|Channel Title</code>\n\n"
+        f"⚠️ Make sure the bot is an <b>Administrator</b> in every required channel.\n"
+        f"Send <code>clear</code> to remove all channels.",
+        reply_markup=build_admin_cancel_kb(sec="set", act="list"),
+    )
 
 
 @router.callback_query(AdmCB.filter((F.sec == "set") & (F.act.in_({"pin_lim", "low_stk"}))))

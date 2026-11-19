@@ -111,6 +111,16 @@ async def seed_app_settings(session: AsyncSession) -> int:
             "",
             "Optional guide URL displayed on manual product activation prompts",
         ),
+        (
+            SettingKey.FORCE_JOIN_ENABLED.value,
+            "false",
+            "Require users to join configured Telegram channel(s) before using the bot (true/false)",
+        ),
+        (
+            SettingKey.FORCE_JOIN_CHANNELS.value,
+            "",
+            "Required Telegram channel(s) for force-join: @username or -100chatid|https://t.me/+invite (one per line)",
+        ),
     ]
     existing = set((await session.execute(select(AppSetting.key))).scalars().all())
     inserted = 0

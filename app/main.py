@@ -156,6 +156,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             async with session_factory() as session:
                 seed_summary = await run_seed(session)
                 logger.info("Startup seed verification completed: %s", seed_summary)
+                if seed_summary.get("translations_added", 0) > 0:
+                    await app.state.translation_service.invalidate_cache()
         except Exception as exc:
             logger.warning("Startup seed check skipped or deferred: %s", exc)
 

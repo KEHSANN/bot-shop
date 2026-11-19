@@ -1648,7 +1648,7 @@ async def test_catalog_crud_hex_color_validation_tiers_and_stock_upload(tmp_path
 async def test_payments_wallets_qr_fiat_rate_orders_support_cms_broadcast(tmp_path: Path) -> None:
     settings = _make_test_settings(tmp_path)
     app = create_web_admin_app(settings=settings)
-    _wire_protocol_doubles(app, tmp_path)
+    doubles = _wire_protocol_doubles(app, tmp_path)
 
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         csrf = await _login_admin(client, settings)
@@ -1779,9 +1779,26 @@ async def test_payments_wallets_qr_fiat_rate_orders_support_cms_broadcast(tmp_pa
         set_resp = await client.post(
             "/admin/cms/settings",
             headers={"X-CSRF-Token": csrf},
-            json={"maintenance_mode": "false", "pinned_limit": "6"},
+            json={
+                "maintenance_mode": "false",
+                "pinned_limit": "6",
+                "force_join_enabled": "true",
+                "force_join_channels": "@myshop\n-1001234567890|https://t.me/+abc123|VIP",
+            },
         )
         assert set_resp.status_code == 200
+        assert doubles["cms_service"].settings["force_join_enabled"].value == "true"
+        assert (
+            doubles["cms_service"].settings["force_join_channels"].value
+            == "@myshop\n-1001234567890|https://t.me/+abc123|VIP"
+        )
+
+        bad_fjoin = await client.post(
+            "/admin/cms/settings",
+            headers={"X-CSRF-Token": csrf},
+            json={"force_join_channels": "https://t.me/+missingid"},
+        )
+        assert bad_fjoin.status_code == 400
 
         # Mass Broadcast job launch & status check
         bc_resp = await client.post(

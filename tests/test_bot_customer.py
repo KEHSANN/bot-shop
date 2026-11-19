@@ -10,12 +10,14 @@ from typing import Any
 
 import pytest
 from aiogram import Bot, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.methods import (
     AnswerCallbackQuery,
     EditMessageCaption,
     EditMessageText,
+    GetChatMember,
     SendDocument,
     SendMessage,
     SendPhoto,
@@ -24,6 +26,8 @@ from aiogram.methods import (
 from aiogram.types import (
     CallbackQuery,
     Chat,
+    ChatMemberLeft,
+    ChatMemberMember,
     InlineKeyboardMarkup,
     Message,
     PhotoSize,
@@ -59,10 +63,15 @@ from app.bot.middlewares import (
     AdminAuthMiddleware,
     AuthContextMiddleware,
     BanCheckMiddleware,
+    ForceJoinMiddleware,
     I18nMiddleware,
     LoggingMiddleware,
     RateLimitMiddleware,
     check_action_cooldown,
+)
+from app.bot.middlewares.force_join_mw import (
+    parse_force_join_channels,
+    validate_force_join_channels_raw,
 )
 from app.bot.states import AdminStates, DepositStates, ShopStates, SupportStates
 from app.config import Settings
@@ -106,6 +115,7 @@ class RecordingBot(Bot):
         ephemeral = token or f"{100000 + secrets.randbelow(900000)}:ZZ{secrets.token_urlsafe(28)}"
         super().__init__(token=ephemeral)
         self.calls: list[TelegramMethod[Any]] = []
+        self.chat_members: dict[tuple[str | int, int], Any] = {}
 
     async def __call__(
         self,
@@ -114,6 +124,15 @@ class RecordingBot(Bot):
     ) -> Any:
         self.calls.append(method)
         now = dt.datetime.now(dt.UTC)
+        if isinstance(method, GetChatMember):
+            entry = self.chat_members.get((method.chat_id, int(method.user_id)))
+            if isinstance(entry, Exception):
+                raise entry
+            if entry is not None:
+                return entry
+            return ChatMemberMember(
+                user=TgUser(id=int(method.user_id), is_bot=False, first_name="Member"),
+            )
         if isinstance(method, (SendMessage, EditMessageText, EditMessageCaption, SendPhoto, SendDocument)):
             chat_id = getattr(method, "chat_id", None) or 111111
             text = getattr(method, "text", None) or getattr(method, "caption", None) or ""
@@ -964,3 +983,206 @@ async def test_middlewares_and_customer_handlers_end_to_end(
             db_session_factory,
             [cust_tg_id, other_tg_id, blocked_tg_id, admin_tg_id, db_admin_tg_id, rl_tg_id],
         )
+
+
+def test_force_join_channel_parser_and_validator() -> None:
+    parsed = parse_force_join_channels(
+        "@shop_news\n"
+        "https://t.me/promo_channel|Promo Club\n"
+        "-1001234567890|https://t.me/+SecretInvite|VIP Channel\n"
+        "@SHOP_NEWS",
+        strict=True,
+    )
+    assert len(parsed) == 3
+    assert parsed[0].chat_id == "@shop_news"
+    assert parsed[0].url == "https://t.me/shop_news"
+    assert parsed[0].title is None
+
+    assert parsed[1].chat_id == "@promo_channel"
+    assert parsed[1].url == "https://t.me/promo_channel"
+    assert parsed[1].title == "Promo Club"
+
+    assert parsed[2].chat_id == -1001234567890
+    assert parsed[2].url == "https://t.me/+SecretInvite"
+    assert parsed[2].title == "VIP Channel"
+
+    canonical = validate_force_join_channels_raw(
+        "https://t.me/alpha_chan\n-1009876543210|https://t.me/+InvCode|Private VIP"
+    )
+    assert canonical == "@alpha_chan\n-1009876543210|https://t.me/+InvCode|Private VIP"
+    assert validate_force_join_channels_raw("   ") == ""
+
+    with pytest.raises(ValidationError):
+        parse_force_join_channels("https://t.me/+OnlyInviteLink", strict=True)
+    with pytest.raises(ValidationError):
+        parse_force_join_channels("-1001234567890", strict=True)
+    with pytest.raises(ValidationError):
+        parse_force_join_channels("bad!", strict=True)
+
+
+async def test_force_join_channel_enforcement_and_verification(
+    db_session_factory: async_sessionmaker[AsyncSession],
+    redis_client: Redis,
+    app_settings: Settings,
+) -> None:
+    async with db_session_factory() as session:
+        await run_seed(session)
+
+    existing_tg_id = _unique_tg_id()
+    new_user_tg_id = _unique_tg_id()
+    admin_tg_id = _unique_tg_id()
+
+    test_settings = app_settings.model_copy(update={"ADMIN_TELEGRAM_IDS": [admin_tg_id]})
+    user_svc = UserService(db_session_factory, settings=test_settings)
+    sup_svc = SupportService(db_session_factory)
+    i18n = TranslationService(db_session_factory, redis_client=redis_client)
+
+    dp = build_dispatcher(
+        settings=test_settings,
+        session_factory=db_session_factory,
+        redis_client=redis_client,
+        user_service=user_svc,
+        support_service=sup_svc,
+        translation_service=i18n,
+        rate_limit_max_requests=50,
+        rate_limit_window_seconds=3,
+    )
+    assert ForceJoinMiddleware in [type(m) for m in dp.update.middleware]
+
+    async def _set_setting(key: str, value: str) -> None:
+        async with db_session_factory() as session:
+            async with session.begin():
+                row = (
+                    await session.execute(select(AppSetting).where(AppSetting.key == key))
+                ).scalar_one_or_none()
+                if row is None:
+                    session.add(AppSetting(key=key, value=value))
+                else:
+                    row.value = value
+
+    async with db_session_factory() as session:
+        orig_enabled = (
+            await session.execute(
+                select(AppSetting.value).where(AppSetting.key == SettingKey.FORCE_JOIN_ENABLED.value)
+            )
+        ).scalar_one_or_none()
+        orig_channels = (
+            await session.execute(
+                select(AppSetting.value).where(AppSetting.key == SettingKey.FORCE_JOIN_CHANNELS.value)
+            )
+        ).scalar_one_or_none()
+
+    bot = RecordingBot()
+    try:
+        await user_svc.upsert_telegram_user(
+            UserCreateOrUpdateDTO(telegram_id=existing_tg_id, username="existing_fj", language_code="en")
+        )
+        await user_svc.set_language(existing_tg_id, "en")
+
+        await _set_setting(SettingKey.FORCE_JOIN_ENABLED.value, "true")
+        await _set_setting(SettingKey.FORCE_JOIN_CHANNELS.value, "@shop_news")
+
+        # 1. Existing unjoined user sends /start -> blocked with Join + Verify buttons
+        bot.chat_members[("@shop_news", existing_tg_id)] = ChatMemberLeft(
+            user=TgUser(id=existing_tg_id, is_bot=False, first_name="Existing")
+        )
+        bot.calls.clear()
+        await dp.feed_update(bot, _make_message_update(tg_id=existing_tg_id, text="/start"))
+        send_calls = [c for c in bot.calls if isinstance(c, SendMessage)]
+        assert len(send_calls) == 1
+        assert "Channel Subscription Required" in send_calls[0].text
+        rows = send_calls[0].reply_markup.inline_keyboard
+        assert rows[0][0].url == "https://t.me/shop_news"
+        assert rows[1][0].callback_data == MenuCB(action="check_join").pack()
+
+        # 2. Clicking Verify while still not joined triggers alert callback
+        bot.calls.clear()
+        await dp.feed_update(
+            bot,
+            _make_callback_update(tg_id=existing_tg_id, data=MenuCB(action="check_join").pack()),
+        )
+        alerts = [c for c in bot.calls if isinstance(c, AnswerCallbackQuery) and c.show_alert]
+        assert len(alerts) == 1
+        assert "not joined" in (alerts[0].text or "").lower()
+
+        # 3. After joining, clicking Verify opens Main Menu with verified toast
+        bot.chat_members[("@shop_news", existing_tg_id)] = ChatMemberMember(
+            user=TgUser(id=existing_tg_id, is_bot=False, first_name="Existing")
+        )
+        bot.calls.clear()
+        await dp.feed_update(
+            bot,
+            _make_callback_update(tg_id=existing_tg_id, data=MenuCB(action="check_join").pack()),
+        )
+        edits = [c for c in bot.calls if isinstance(c, EditMessageText)]
+        answers = [c for c in bot.calls if isinstance(c, AnswerCallbackQuery)]
+        assert len(edits) == 1 and "$" in edits[0].text
+        assert any("verified" in (a.text or "").lower() for a in answers)
+
+        # 4. Brand-new user picks language first, then sees force-join in chosen locale ("fa")
+        bot.chat_members[("@shop_news", new_user_tg_id)] = ChatMemberLeft(
+            user=TgUser(id=new_user_tg_id, is_bot=False, first_name="NewUser")
+        )
+        bot.calls.clear()
+        await dp.feed_update(bot, _make_message_update(tg_id=new_user_tg_id, text="/start"))
+        first_sends = [c for c in bot.calls if isinstance(c, SendMessage)]
+        assert len(first_sends) == 1
+        assert any(
+            btn.callback_data and btn.callback_data.startswith("lang:")
+            for row in first_sends[0].reply_markup.inline_keyboard
+            for btn in row
+        )
+
+        bot.calls.clear()
+        await dp.feed_update(
+            bot,
+            _make_callback_update(tg_id=new_user_tg_id, data=LangCB(code="fa").pack()),
+        )
+        lang_edits = [c for c in bot.calls if isinstance(c, EditMessageText)]
+        assert len(lang_edits) == 1
+        assert "عضویت اجباری" in lang_edits[0].text
+        assert "$" not in lang_edits[0].text
+
+        bot.chat_members[("@shop_news", new_user_tg_id)] = ChatMemberMember(
+            user=TgUser(id=new_user_tg_id, is_bot=False, first_name="NewUser")
+        )
+        bot.calls.clear()
+        await dp.feed_update(
+            bot,
+            _make_callback_update(tg_id=new_user_tg_id, data=MenuCB(action="check_join").pack()),
+        )
+        fa_menu_edits = [c for c in bot.calls if isinstance(c, EditMessageText)]
+        assert len(fa_menu_edits) == 1
+        assert "خوش آمدید" in fa_menu_edits[0].text
+
+        # 5. Admin bypasses force-join even if ChatMemberLeft
+        bot.chat_members[("@shop_news", admin_tg_id)] = ChatMemberLeft(
+            user=TgUser(id=admin_tg_id, is_bot=False, first_name="Admin")
+        )
+        bot.calls.clear()
+        await dp.feed_update(bot, _make_message_update(tg_id=admin_tg_id, text="/start"))
+        assert any(isinstance(c, SendMessage) and "preferred language" in c.text for c in bot.calls)
+
+        # 6. Misconfigured channel (e.g. bot not admin / chat not found) fails open gracefully
+        await _set_setting(SettingKey.FORCE_JOIN_CHANNELS.value, "@missing_perm_ch")
+        bot.chat_members[("@missing_perm_ch", existing_tg_id)] = TelegramBadRequest(
+            method=GetChatMember(chat_id="@missing_perm_ch", user_id=existing_tg_id),
+            message="Bad Request: chat not found",
+        )
+        bot.calls.clear()
+        await dp.feed_update(bot, _make_message_update(tg_id=existing_tg_id, text="/start"))
+        assert any(isinstance(c, SendMessage) and "$" in c.text for c in bot.calls)
+    finally:
+        await _set_setting(
+            SettingKey.FORCE_JOIN_ENABLED.value,
+            orig_enabled if orig_enabled is not None else "false",
+        )
+        await _set_setting(
+            SettingKey.FORCE_JOIN_CHANNELS.value,
+            orig_channels if orig_channels is not None else "",
+        )
+        await _cleanup_user_by_tg_id(
+            db_session_factory,
+            [existing_tg_id, new_user_tg_id, admin_tg_id],
+        )
+        await bot.session.close()

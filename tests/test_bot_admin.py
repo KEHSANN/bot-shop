@@ -604,7 +604,13 @@ class FakeCMSService:
                 updated_at=now,
             )
         ]
-        self.settings: dict[str, str] = {"maintenance_mode": "false", "pinned_limit": "4", "low_stock_default_threshold": "5"}
+        self.settings: dict[str, str] = {
+            "maintenance_mode": "false",
+            "pinned_limit": "4",
+            "low_stock_default_threshold": "5",
+            "force_join_enabled": "false",
+            "force_join_channels": "",
+        }
 
     async def get_translation(self, key: str, lang_code: str) -> str:
         tr = self.translations.get((key, lang_code))
@@ -1077,6 +1083,13 @@ async def test_admin_support_cms_settings_and_broadcast_wizard(monkeypatch: pyte
 
         await dp.feed_update(bot, _make_callback_update(900001, AdmCB(sec="set", act="tog_maint").pack()))
         assert services["cms_service"].settings["maintenance_mode"] == "true"
+
+        await dp.feed_update(bot, _make_callback_update(900001, AdmCB(sec="set", act="tog_fjoin").pack()))
+        assert services["cms_service"].settings["force_join_enabled"] == "true"
+
+        await dp.feed_update(bot, _make_callback_update(900001, AdmCB(sec="set", act="fjoin_ch").pack()))
+        await dp.feed_update(bot, _make_message_update(900001, "@myshop_ch"))
+        assert services["cms_service"].settings["force_join_channels"] == "@myshop_ch"
 
         # Keyboard invariants
         home_kb = build_admin_home_kb()

@@ -207,3 +207,5 @@ class SettingKey(str, Enum):
     PINNED_LIMIT = "pinned_limit"
     LOW_STOCK_DEFAULT_THRESHOLD = "low_stock_default_threshold"
     GUIDE_URL = "guide_url"
+    FORCE_JOIN_ENABLED = "force_join_enabled"
+    FORCE_JOIN_CHANNELS = "force_join_channels"

@@ -25,6 +25,7 @@ from app.bot.middlewares import (
     AdminAuthMiddleware,
     AuthContextMiddleware,
     BanCheckMiddleware,
+    ForceJoinMiddleware,
     I18nMiddleware,
     LoggingMiddleware,
     RateLimitMiddleware,
@@ -285,6 +286,13 @@ def build_dispatcher(
         )
     )
     dp.update.middleware(I18nMiddleware(resolved_i18n))
+    dp.update.middleware(
+        ForceJoinMiddleware(
+            session_factory=runtime_session_factory,
+            redis_client=active_redis,
+            translation_service=resolved_i18n,
+        )
+    )
 
     _register_error_handler(dp, translation_service=resolved_i18n)
 
