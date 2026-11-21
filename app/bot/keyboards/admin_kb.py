@@ -78,6 +78,16 @@ def build_admin_home_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="📣 Set Force-Join Channel(s)",
+                    callback_data=AdmCB(sec="set", act="fjoin_ch").pack(),
+                ),
+                InlineKeyboardButton(
+                    text="⚙️ App Settings",
+                    callback_data=AdmCB(sec="set", act="list").pack(),
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text="🏠 Customer Main Menu",
                     callback_data=MenuCB(action="main").pack(),
                 )
@@ -1044,7 +1054,13 @@ def build_cms_menu_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
-                    text="⚙️ App Settings (Maintenance / Pinned)",
+                    text="📣 Set Force-Join Channel(s)",
+                    callback_data=AdmCB(sec="set", act="fjoin_ch").pack(),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⚙️ App Settings (Force Join / Maintenance / Pinned)",
                     callback_data=AdmCB(sec="set", act="list").pack(),
                 )
             ],
